@@ -16,16 +16,18 @@ const WishlistPage = lazy(() => import('@/pages/WishlistPage'))
 const CheckoutPage = lazy(() => import('@/pages/CheckoutPage'))
 const OrdersPage = lazy(() => import('@/pages/OrdersPage'))
 const OrderDetailPage = lazy(() => import('@/pages/OrderDetailPage'))
+const OrderSuccessPage = lazy(() => import('@/pages/OrderSuccessPage'))
 const LoginPage = lazy(() => import('@/pages/LoginPage'))
 const RegisterPage = lazy(() => import('@/pages/RegisterPage'))
 const ProfilePage = lazy(() => import('@/pages/ProfilePage'))
 const SupportPage = lazy(() => import('@/pages/SupportPage'))
 
 // Admin pages
-const AdminLoginPage      = lazy(() => import('@/pages/admin/AdminLoginPage'))
-const AdminDashboardPage  = lazy(() => import('@/pages/admin/AdminDashboardPage'))
-const AdminProductsPage   = lazy(() => import('@/pages/admin/AdminProductsPage'))
+const AdminLoginPage       = lazy(() => import('@/pages/admin/AdminLoginPage'))
+const AdminDashboardPage   = lazy(() => import('@/pages/admin/AdminDashboardPage'))
+const AdminProductsPage    = lazy(() => import('@/pages/admin/AdminProductsPage'))
 const AdminProductFormPage = lazy(() => import('@/pages/admin/AdminProductFormPage'))
+const AdminOrdersPage      = lazy(() => import('@/pages/admin/AdminOrdersPage'))
 
 function PageLoader() {
   return (
@@ -95,6 +97,10 @@ export default function App() {
                 }
               />
               <Route
+                path="/order-success/:id"
+                element={<OrderSuccessPage />}
+              />
+              <Route
                 path="/profile"
                 element={
                   <ProtectedRoute>
@@ -121,6 +127,10 @@ export default function App() {
               <Route
                 path="/admin/products/edit/:id"
                 element={<AdminRoute><AdminProductFormPage /></AdminRoute>}
+              />
+              <Route
+                path="/admin/orders"
+                element={<AdminRoute><AdminOrdersPage /></AdminRoute>}
               />
             </Routes>
           </Suspense>

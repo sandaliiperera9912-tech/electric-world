@@ -119,10 +119,29 @@ function ProductCard({ product }: { product: Product }) {
 export default function HomePage() {
   const [activeCategory, setActiveCategory] = useState('all')
   const [searchQuery, setSearchQuery] = useState('')
+  const [products, setProducts] = useState<Product[]>(STATIC_PRODUCTS)
+  const [loadingProducts, setLoadingProducts] = useState(true)
   const navigate = useNavigate()
   const { addItem } = useCart()
 
-  const filtered = STATIC_PRODUCTS.filter(p => {
+  // Fetch from Supabase; fall back to static data if empty/error
+  useEffect(() => {
+    import('@/lib/supabase').then(({ supabase }) => {
+      supabase
+        .from('products')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .then(({ data, error }) => {
+          if (!error && data && data.length > 0) {
+            setProducts(data as Product[])
+          }
+          // else keep STATIC_PRODUCTS as fallback
+        })
+        .finally(() => setLoadingProducts(false))
+    })
+  }, [])
+
+  const filtered = products.filter(p => {
     const matchCat = activeCategory === 'all' || p.category === activeCategory
     const matchSearch =
       !searchQuery ||
@@ -221,10 +240,12 @@ export default function HomePage() {
                   </div>
                 </div>
 
-                <div className="h-40 rounded-xl flex items-center justify-center mb-4"
-                  style={{ background: 'rgba(255,255,255,0.08)' }}
-                >
-                  <Headphones className="w-20 h-20 text-white/30" />
+                <div className="h-40 rounded-xl overflow-hidden mb-4">
+                  <img
+                    src="/featured-product.jpg"
+                    alt="Sony WH-1000XM5"
+                    className="w-full h-full object-cover"
+                  />
                 </div>
 
                 <h3 className="font-heading font-bold text-white text-xl mb-1">Sony WH-1000XM5</h3>
@@ -344,7 +365,25 @@ export default function HomePage() {
           </div>
 
           {/* Product grid */}
-          {filtered.length === 0 ? (
+          {loadingProducts ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+              {[...Array(8)].map((_, i) => (
+                <div key={i} className="rounded-2xl overflow-hidden animate-pulse" style={{ border: '1px solid #D9E1EB', background: '#fff' }}>
+                  <div className="h-44 bg-gray-100" />
+                  <div className="p-4 space-y-3">
+                    <div className="h-3 bg-gray-100 rounded w-1/3" />
+                    <div className="h-4 bg-gray-100 rounded w-3/4" />
+                    <div className="h-3 bg-gray-100 rounded w-full" />
+                    <div className="h-3 bg-gray-100 rounded w-2/3" />
+                    <div className="flex justify-between items-center pt-2">
+                      <div className="h-5 bg-gray-100 rounded w-1/4" />
+                      <div className="h-8 bg-gray-100 rounded w-1/3" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 gap-4">
               <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: '#F6F8FA', border: '1px solid #D9E1EB' }}>
                 <Search className="w-8 h-8 text-text-muted" />

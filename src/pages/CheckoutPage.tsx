@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { loadStripe } from '@stripe/stripe-js'
 import {
@@ -55,11 +55,13 @@ const STRIPE_APPEARANCE = {
 function CheckoutForm({
   total,
   shippingForm,
+  onOrderPlaced,
 }: {
   clientSecret?: string
   shipping?: number
   total: number
   shippingForm: ShippingForm
+  onOrderPlaced: (orderId: string) => void
 }) {
   const stripe = useStripe()
   const elements = useElements()
@@ -109,17 +111,20 @@ function CheckoutForm({
 
         if (orderError || !order) throw new Error('Failed to create order')
 
-        // Insert order items
+        // Insert order items — product_id only if it's a real UUID (not a static demo ID)
+        const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
         const orderItems = cartItems.map(({ product, quantity }) => ({
           order_id: order.id,
-          product_id: product.id,
+          product_id: UUID_REGEX.test(product.id) ? product.id : null,
+          product_name: product.name,
+          product_image: product.images?.[0] ?? null,
           quantity,
           price_at_purchase: product.price,
         }))
         await supabase.from('order_items').insert(orderItems)
 
         clearCart()
-        navigate(`/orders/${order.id}`)
+        onOrderPlaced(order.id)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred.')
@@ -173,6 +178,7 @@ export default function CheckoutPage() {
   const { cartItems, cartTotal } = useCart()
   const { user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
+  const orderPlaced = useRef(false)
 
   const [clientSecret, setClientSecret] = useState('')
   const [serverTotal, setServerTotal] = useState(0)
@@ -196,10 +202,11 @@ export default function CheckoutPage() {
       return
     }
 
-    if (cartItems.length === 0) {
+    if (cartItems.length === 0 && !orderPlaced.current) {
       navigate('/cart', { replace: true })
       return
     }
+    if (orderPlaced.current) return
 
     const payload = {
       cartItems: cartItems.map(({ product, quantity }) => ({
@@ -429,6 +436,10 @@ export default function CheckoutPage() {
                       <CheckoutForm
                         total={serverTotal}
                         shippingForm={shippingForm}
+                        onOrderPlaced={(orderId) => {
+                          orderPlaced.current = true
+                          navigate(`/order-success/${orderId}`)
+                        }}
                       />
                     </Elements>
                   )}

@@ -1,24 +1,23 @@
 import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, Package, LogOut, Menu, X, Zap, ChevronRight,
+  LayoutDashboard, Package, LogOut, Menu, Zap, ChevronRight, ShoppingBag,
 } from 'lucide-react'
-import { useAuth } from '@/store/authContext'
 import { cn } from '@/lib/utils'
 
 const NAV_ITEMS = [
   { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/admin/products',  icon: Package,         label: 'Products'  },
+  { to: '/admin/orders',    icon: ShoppingBag,     label: 'Orders'    },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation()
-  const { signOut } = useAuth()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  const handleSignOut = async () => {
-    await signOut()
+  const handleSignOut = () => {
+    localStorage.removeItem('ew_admin_session')
     navigate('/admin/login')
   }
 
