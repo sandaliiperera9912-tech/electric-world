@@ -24,10 +24,10 @@ const ICONS = {
 }
 
 const STYLES = {
-  success: 'bg-green-500/15 border-green-500/30 text-green-400',
-  error: 'bg-red-500/15 border-red-500/30 text-red-400',
-  info: 'bg-blue-500/15 border-blue-500/30 text-blue-400',
-  warning: 'bg-yellow-500/15 border-yellow-500/30 text-yellow-400',
+  success: 'bg-green-50 border-green-200 text-green-700',
+  error:   'bg-red-50 border-brand-red/30 text-brand-red',
+  info:    'bg-blue-50 border-brand-header/30 text-brand-header',
+  warning: 'bg-yellow-50 border-yellow-300 text-yellow-700',
 }
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -51,7 +51,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <div
               key={t.id}
               className={cn(
-                'flex items-center gap-3 px-4 py-3 rounded-xl border shadow-lg text-sm font-medium pointer-events-auto animate-slide-up max-w-sm',
+                'flex items-center gap-3 px-4 py-3 rounded-xl border shadow-card text-sm font-medium pointer-events-auto animate-slide-up max-w-sm',
                 STYLES[t.type]
               )}
             >

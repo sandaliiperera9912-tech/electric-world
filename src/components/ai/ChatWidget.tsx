@@ -11,6 +11,9 @@ import { useCart } from '@/store/cartContext'
 import type { ChatMessage, Product } from '@/types'
 import type OpenAI from 'openai'
 
+// Persistent tool-aware conversation history (survives re-renders)
+let fullConversationHistory: OpenAI.Chat.ChatCompletionMessageParam[] = []
+
 const QUICK_REPLIES = [
   'Best laptops under $1500',
   'Headphones under $300',
@@ -36,17 +39,23 @@ function renderMarkdown(text: string) {
 function MiniProductCard({ product }: { product: Product }) {
   const { addItem } = useCart()
   return (
-    <div className="flex items-center gap-2 bg-dark-bg/60 border border-dark-border rounded-xl p-2.5 text-xs">
-      <div className="w-10 h-10 rounded-lg bg-dark-muted flex items-center justify-center shrink-0">
-        <Zap className="w-4 h-4 text-text-muted" />
+    <div
+      className="flex items-center gap-2 rounded-xl p-2.5 text-xs"
+      style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }}
+    >
+      <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+        style={{ background: 'rgba(255,255,255,0.06)' }}
+      >
+        <Zap className="w-4 h-4 text-white/40" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="font-medium text-text-primary truncate">{product.name}</p>
-        <p className="text-blue-400 font-semibold">{formatPrice(product.price)}</p>
+        <p className="font-medium text-white truncate">{product.name}</p>
+        <p className="text-brand-red font-semibold">{formatPrice(product.price)}</p>
       </div>
       <button
         onClick={() => addItem(product)}
-        className="shrink-0 p-1.5 rounded-lg bg-blue-500/15 border border-blue-500/20 text-blue-400 hover:bg-blue-500/25 transition-all"
+        className="shrink-0 p-1.5 rounded-lg transition-all hover:scale-105 active:scale-95"
+        style={{ background: 'rgba(227,26,45,0.2)', border: '1px solid rgba(227,26,45,0.3)', color: '#fca5a5' }}
       >
         <ShoppingCart className="w-3.5 h-3.5" />
       </button>
@@ -67,6 +76,13 @@ export default function ChatWidget() {
   const navigate = useNavigate()
 
   const hasOpenAI = !!import.meta.env.VITE_OPENAI_API_KEY
+
+  // Reset persistent history when messages are cleared
+  useEffect(() => {
+    if (messages.length === 1 && messages[0].id === 'init') {
+      fullConversationHistory = []
+    }
+  }, [messages])
 
   useEffect(() => {
     if (isOpen) {
@@ -105,34 +121,47 @@ export default function ChatWidget() {
     }
 
     try {
-      // Build message history for OpenAI
-      const history: OpenAI.Chat.ChatCompletionMessageParam[] = messages
-        .filter(m => m.id !== 'init')
-        .map(m => ({ role: m.role, content: m.content }))
-      history.push({ role: 'user', content: trimmed })
+      // Use the persistent full history (includes tool call messages for context)
+      fullConversationHistory.push({ role: 'user', content: trimmed })
 
-      const response = await openaiClient.chat.completions.create({
-        model: AI_MODEL,
-        messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...history],
-        tools: AI_TOOLS,
-        tool_choice: 'auto',
-        max_tokens: MAX_TOKENS,
-        temperature: TEMPERATURE,
-      })
+      // Multi-round tool calling loop (up to 5 rounds so AI can search → then add to cart)
+      const loopMessages: OpenAI.Chat.ChatCompletionMessageParam[] = [...fullConversationHistory]
+      let productResults: Product[] | undefined
+      const MAX_ROUNDS = 5
 
-      const choice = response.choices[0]
+      for (let round = 0; round < MAX_ROUNDS; round++) {
+        const response = await openaiClient.chat.completions.create({
+          model: AI_MODEL,
+          messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...loopMessages],
+          tools: AI_TOOLS,
+          tool_choice: 'auto',
+          max_tokens: MAX_TOKENS,
+          temperature: TEMPERATURE,
+        })
 
-      // Handle tool calls
-      if (choice.finish_reason === 'tool_calls' && choice.message.tool_calls) {
-        const toolHistory: OpenAI.Chat.ChatCompletionMessageParam[] = [
-          ...history,
-          choice.message,
-        ]
+        const choice = response.choices[0]
+        loopMessages.push(choice.message)
 
-        let productResults: Product[] | undefined
+        // No more tool calls — final text response
+        if (choice.finish_reason !== 'tool_calls' || !choice.message.tool_calls) {
+          const content = choice.message.content || "I'm sorry, I couldn't generate a response. Please try again."
+          // Save final assistant reply to persistent history
+          fullConversationHistory = loopMessages
+          setIsTyping(false)
+          setMessages(prev => [...prev, {
+            id: generateId(),
+            role: 'assistant',
+            content,
+            timestamp: new Date(),
+            productResults,
+          }])
+          return
+        }
 
+        // Execute each tool call
         for (const toolCall of choice.message.tool_calls) {
           if (toolCall.type !== 'function') continue
+
           const args = JSON.parse(toolCall.function.arguments) as Record<string, unknown>
           const result = await executeToolCall(
             toolCall.function.name,
@@ -142,12 +171,12 @@ export default function ChatWidget() {
             addItem
           )
 
-          // Capture search results for rendering
+          // Capture product search results for mini-card rendering
           if (toolCall.function.name === 'search_products' && result.success && Array.isArray(result.data)) {
             productResults = result.data as Product[]
           }
 
-          // Handle redirect action
+          // Handle redirect immediately
           if (result.action === 'redirect' && result.path) {
             setIsTyping(false)
             setMessages(prev => [...prev, {
@@ -160,43 +189,28 @@ export default function ChatWidget() {
             return
           }
 
-          toolHistory.push({
+          loopMessages.push({
             role: 'tool',
             tool_call_id: toolCall.id,
             content: JSON.stringify(result),
           })
         }
-
-        // Get final reply after tool results
-        const finalResponse = await openaiClient.chat.completions.create({
-          model: AI_MODEL,
-          messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...toolHistory],
-          max_tokens: MAX_TOKENS,
-          temperature: TEMPERATURE,
-        })
-
-        const finalContent = finalResponse.choices[0].message.content || ''
-
-        setIsTyping(false)
-        setMessages(prev => [...prev, {
-          id: generateId(),
-          role: 'assistant',
-          content: finalContent,
-          timestamp: new Date(),
-          productResults,
-        }])
-      } else {
-        // Direct text response
-        const content = choice.message.content || "I'm sorry, I couldn't generate a response. Please try again."
-        setIsTyping(false)
-        setMessages(prev => [...prev, {
-          id: generateId(), role: 'assistant', content, timestamp: new Date(),
-        }])
+        // Loop continues — AI will see tool results and can call more tools or reply
       }
+
+      // Safety fallback if loop exhausted
+      setIsTyping(false)
+      setMessages(prev => [...prev, {
+        id: generateId(),
+        role: 'assistant',
+        content: "I've completed your request!",
+        timestamp: new Date(),
+        productResults,
+      }])
+
     } catch (err) {
       console.error('AI error:', err)
       setIsTyping(false)
-      // Fall back to keyword matching
       const reply = getBotReply(trimmed)
       setMessages(prev => [...prev, {
         id: generateId(), role: 'assistant', content: reply, timestamp: new Date(),
@@ -214,7 +228,11 @@ export default function ChatWidget() {
       {/* Floating toggle button */}
       <button
         onClick={() => setIsOpen(prev => !prev)}
-        className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg shadow-blue-500/30 hover:shadow-blue-500/50 hover:scale-105 transition-all duration-200 active:scale-95"
+        className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full flex items-center justify-center hover:scale-105 transition-all duration-200 active:scale-95"
+        style={{
+          background: '#E31A2D',
+          boxShadow: '0 4px 20px rgba(227,26,45,0.45)',
+        }}
         aria-label="Toggle Volt AI chat"
       >
         {isOpen ? (
@@ -223,24 +241,29 @@ export default function ChatWidget() {
           <Zap className="w-6 h-6 text-white" strokeWidth={2.5} />
         )}
         {hasUnread && !isOpen && (
-          <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-dark-bg animate-pulse" />
+          <span className="absolute -top-1 -right-1 w-4 h-4 bg-brand-navy rounded-full border-2 border-white animate-pulse" />
         )}
       </button>
 
       {/* Chat window */}
       {isOpen && (
         <div
-          className="fixed bottom-24 right-6 z-40 w-[358px] h-[520px] flex flex-col rounded-2xl overflow-hidden shadow-2xl shadow-black/50 border border-dark-border animate-slide-up"
-          style={{ background: '#07070d' }}
+          className="fixed bottom-24 right-6 z-40 w-[358px] h-[520px] flex flex-col rounded-2xl overflow-hidden shadow-2xl animate-slide-up"
+          style={{ background: '#0A1929', border: '1px solid rgba(255,255,255,0.08)' }}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-dark-border bg-gradient-to-r from-blue-500/10 to-purple-500/10">
+          <div
+            className="flex items-center justify-between px-4 py-3"
+            style={{ borderBottom: '1px solid rgba(255,255,255,0.08)', background: '#102E5A' }}
+          >
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-md">
+              <div className="w-9 h-9 rounded-full flex items-center justify-center shadow-md"
+                style={{ background: '#E31A2D' }}
+              >
                 <Zap className="w-5 h-5 text-white" strokeWidth={2.5} />
               </div>
               <div>
-                <p className="font-heading font-semibold text-text-primary text-sm">Volt AI</p>
+                <p className="font-heading font-semibold text-white text-sm">Volt AI</p>
                 <div className="flex items-center gap-1.5">
                   <span className="w-2 h-2 bg-green-400 rounded-full" />
                   <span className="text-xs text-green-400">Online</span>
@@ -249,11 +272,11 @@ export default function ChatWidget() {
             </div>
             <div className="flex items-center gap-2">
               {hasOpenAI && (
-                <span className="text-[10px] text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full">GPT-4o</span>
+                <span className="text-[10px] text-white/60 bg-white/10 border border-white/15 px-2 py-0.5 rounded-full">GPT-4o</span>
               )}
               <button
                 onClick={() => setIsOpen(false)}
-                className="p-1.5 text-text-muted hover:text-text-primary hover:bg-dark-muted rounded-lg transition-all"
+                className="p-1.5 text-white/50 hover:text-white hover:bg-white/10 rounded-lg transition-all"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -265,7 +288,10 @@ export default function ChatWidget() {
             {messages.map(msg => (
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {msg.role === 'assistant' && (
-                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center mr-2 mt-1 shrink-0">
+                  <div
+                    className="w-6 h-6 rounded-full flex items-center justify-center mr-2 mt-1 shrink-0"
+                    style={{ background: '#E31A2D' }}
+                  >
                     <Zap className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
                   </div>
                 )}
@@ -273,12 +299,16 @@ export default function ChatWidget() {
                   <div
                     className={`px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed ${
                       msg.role === 'user'
-                        ? 'bg-white text-gray-900 rounded-tr-sm'
-                        : 'bg-dark-muted border border-dark-border text-text-primary rounded-tl-sm'
+                        ? 'text-brand-navy rounded-tr-sm font-medium'
+                        : 'text-white/90 rounded-tl-sm'
                     }`}
+                    style={
+                      msg.role === 'user'
+                        ? { background: '#FFFFFF' }
+                        : { background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.08)' }
+                    }
                     dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
                   />
-                  {/* Mini product cards */}
                   {msg.productResults && msg.productResults.length > 0 && (
                     <div className="space-y-1.5">
                       {msg.productResults.slice(0, 4).map(p => (
@@ -292,10 +322,15 @@ export default function ChatWidget() {
 
             {isTyping && (
               <div className="flex justify-start items-end gap-2">
-                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shrink-0">
+                <div className="w-6 h-6 rounded-full flex items-center justify-center shrink-0"
+                  style={{ background: '#E31A2D' }}
+                >
                   <Zap className="w-3.5 h-3.5 text-white" strokeWidth={2.5} />
                 </div>
-                <div className="bg-dark-muted border border-dark-border rounded-2xl rounded-tl-sm px-4 py-3">
+                <div
+                  className="rounded-2xl rounded-tl-sm px-4 py-3"
+                  style={{ background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.08)' }}
+                >
                   <div className="flex gap-1 items-center h-4">
                     <span className="typing-dot" />
                     <span className="typing-dot" />
@@ -308,12 +343,24 @@ export default function ChatWidget() {
           </div>
 
           {/* Quick reply chips */}
-          <div className="px-4 py-2 flex gap-2 overflow-x-auto scrollbar-hide border-t border-dark-border/50">
+          <div
+            className="px-4 py-2 flex gap-2 overflow-x-auto scrollbar-hide"
+            style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
+          >
             {QUICK_REPLIES.map(reply => (
               <button
                 key={reply}
                 onClick={() => sendMessage(reply)}
-                className="shrink-0 text-xs px-3 py-1.5 rounded-full border border-dark-border text-text-secondary hover:text-text-primary hover:border-blue-500/40 hover:bg-blue-500/5 transition-all whitespace-nowrap"
+                className="shrink-0 text-xs px-3 py-1.5 rounded-full transition-all whitespace-nowrap text-white/60 hover:text-white"
+                style={{ border: '1px solid rgba(255,255,255,0.12)', background: 'transparent' }}
+                onMouseEnter={e => {
+                  (e.target as HTMLButtonElement).style.borderColor = 'rgba(227,26,45,0.5)'
+                  ;(e.target as HTMLButtonElement).style.background = 'rgba(227,26,45,0.1)'
+                }}
+                onMouseLeave={e => {
+                  (e.target as HTMLButtonElement).style.borderColor = 'rgba(255,255,255,0.12)'
+                  ;(e.target as HTMLButtonElement).style.background = 'transparent'
+                }}
               >
                 {reply}
               </button>
@@ -321,7 +368,11 @@ export default function ChatWidget() {
           </div>
 
           {/* Input */}
-          <form onSubmit={handleSubmit} className="px-4 py-3 border-t border-dark-border flex gap-2 items-center">
+          <form
+            onSubmit={handleSubmit}
+            className="px-4 py-3 flex gap-2 items-center"
+            style={{ borderTop: '1px solid rgba(255,255,255,0.08)' }}
+          >
             <input
               ref={inputRef}
               type="text"
@@ -329,16 +380,23 @@ export default function ChatWidget() {
               onChange={e => setInputValue(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(inputValue) } }}
               placeholder="Ask Volt AI anything..."
-              className="flex-1 bg-dark-muted border border-dark-border rounded-xl px-4 py-2.5 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500/40 transition-all"
+              className="flex-1 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-white/30 focus:outline-none transition-all"
+              style={{
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.10)',
+              }}
+              onFocus={e => { e.target.style.borderColor = 'rgba(227,26,45,0.4)' }}
+              onBlur={e => { e.target.style.borderColor = 'rgba(255,255,255,0.10)' }}
             />
             <button
               type="submit"
               disabled={!inputValue.trim()}
-              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all active:scale-95 ${
+              className="w-10 h-10 rounded-xl flex items-center justify-center transition-all active:scale-95"
+              style={
                 inputValue.trim()
-                  ? 'bg-gradient-to-br from-blue-500 to-purple-600 text-white shadow-md shadow-blue-500/20'
-                  : 'bg-dark-muted text-text-muted cursor-not-allowed'
-              }`}
+                  ? { background: '#E31A2D', color: 'white', boxShadow: '0 2px 10px rgba(227,26,45,0.4)' }
+                  : { background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.3)', cursor: 'not-allowed' }
+              }
             >
               <Send className="w-4 h-4" />
             </button>

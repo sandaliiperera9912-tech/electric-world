@@ -26,14 +26,29 @@ interface ShippingForm {
 }
 
 const STRIPE_APPEARANCE = {
-  theme: 'night' as const,
+  theme: 'stripe' as const,
   variables: {
-    colorPrimary: '#3b82f6',
-    colorBackground: '#0d0d14',
-    colorText: '#e8e6f0',
-    colorDanger: '#ef4444',
+    colorPrimary: '#E31A2D',
+    colorBackground: '#ffffff',
+    colorText: '#001C3F',
+    colorDanger: '#E31A2D',
+    colorTextSecondary: '#647A96',
     borderRadius: '12px',
     fontFamily: 'DM Sans, sans-serif',
+    spacingUnit: '4px',
+  },
+  rules: {
+    '.Input': {
+      border: '1px solid #D9E1EB',
+      boxShadow: 'none',
+    },
+    '.Input:focus': {
+      border: '1px solid #102E5A',
+      boxShadow: '0 0 0 3px rgba(16,46,90,0.12)',
+    },
+    '.Label': { color: '#647A96', fontWeight: '500' },
+    '.Tab': { border: '1px solid #D9E1EB' },
+    '.Tab--selected': { border: '1px solid #E31A2D', color: '#E31A2D' },
   },
 }
 
@@ -114,13 +129,13 @@ function CheckoutForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="bg-dark-muted/30 rounded-xl p-5 border border-dark-border">
+      <div className="rounded-xl p-5" style={{ background: '#F6F8FA', border: '1px solid #D9E1EB' }}>
         <h3 className="font-heading font-semibold text-text-primary mb-4 text-sm">Payment Details</h3>
         <PaymentElement options={{ layout: 'tabs' }} />
       </div>
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm px-4 py-3 rounded-xl">
+        <div className="bg-red-50 border border-brand-red/20 text-brand-red text-sm px-4 py-3 rounded-xl">
           {error}
         </div>
       )}
@@ -156,7 +171,7 @@ function CheckoutForm({
 
 export default function CheckoutPage() {
   const { cartItems, cartTotal } = useCart()
-  const { user } = useAuth()
+  const { user, loading: authLoading } = useAuth()
   const navigate = useNavigate()
 
   const [clientSecret, setClientSecret] = useState('')
@@ -173,7 +188,15 @@ export default function CheckoutPage() {
   const shippingValid = shippingForm.name && shippingForm.line1 && shippingForm.city && shippingForm.postcode
 
   useEffect(() => {
-    if (!user || cartItems.length === 0) {
+    // Wait for auth to finish loading before checking session
+    if (authLoading) return
+
+    if (!user) {
+      navigate('/login', { replace: true, state: { from: { pathname: '/checkout' } } })
+      return
+    }
+
+    if (cartItems.length === 0) {
       navigate('/cart', { replace: true })
       return
     }
@@ -182,27 +205,64 @@ export default function CheckoutPage() {
       cartItems: cartItems.map(({ product, quantity }) => ({
         productId: product.id,
         quantity,
+        priceHint: product.price,   // used as fallback if product isn't in DB yet
       })),
       userId: user.id,
     }
 
-    supabase.functions
-      .invoke('create-payment-intent', { body: payload })
-      .then(({ data, error }) => {
-        if (error || !data?.clientSecret) {
-          setFetchError('Failed to initialize payment. Please try again.')
+    const invokePaymentIntent = async () => {
+      try {
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
+        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string
+
+        const res = await fetch(
+          `${supabaseUrl}/functions/v1/create-payment-intent`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'apikey': anonKey,
+              'Authorization': `Bearer ${anonKey}`,
+            },
+            body: JSON.stringify(payload),
+          }
+        )
+
+        const json = await res.json()
+        console.log('[Checkout] Edge Function response:', res.status, json)
+
+        if (!res.ok || !json.clientSecret) {
+          const msg = json?.error || `Server error ${res.status}`
+          console.error('[Checkout] Edge Function error:', msg)
+          setFetchError(`Payment error: ${msg}`)
           return
         }
-        setClientSecret(data.clientSecret)
-        setServerTotal(data.total)
-        setServerShipping(data.shipping)
-      })
-      .catch(() => setFetchError('Payment service unavailable. Please try again later.'))
-      .finally(() => setLoading(false))
-  }, [user, cartItems, navigate])
+
+        setClientSecret(json.clientSecret)
+        setServerTotal(json.total)
+        setServerShipping(json.shipping)
+      } catch (err) {
+        console.error('[Checkout] Network error:', err)
+        setFetchError('Could not reach payment service. Check your connection and try again.')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    invokePaymentIntent()
+  }, [user, authLoading, cartItems, navigate])
+
+  // Don't render until we know the auth state
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: '#F6F8FA' }}>
+        <div className="w-8 h-8 border-2 border-brand-red border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-dark-bg">
+    <div className="min-h-screen" style={{ background: '#F6F8FA' }}>
       <Navbar />
       <div className="pt-24 pb-16 px-4">
         <div className="max-w-5xl mx-auto">
@@ -213,14 +273,16 @@ export default function CheckoutPage() {
           <div className="flex items-center gap-2 mb-8 text-sm">
             {['Shipping', 'Payment'].map((s, i) => (
               <div key={s} className="flex items-center gap-2">
-                <div className={cn(
-                  'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold',
-                  step > i + 1
-                    ? 'bg-green-500 text-white'
-                    : step === i + 1
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-dark-muted text-text-muted'
-                )}>
+                <div
+                  className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
+                  style={
+                    step > i + 1
+                      ? { background: '#16a34a', color: '#fff' }
+                      : step === i + 1
+                        ? { background: '#E31A2D', color: '#fff' }
+                        : { background: '#EEF2F7', color: '#647A96' }
+                  }
+                >
                   {i + 1}
                 </div>
                 <span className={step === i + 1 ? 'text-text-primary font-medium' : 'text-text-muted'}>
@@ -237,14 +299,17 @@ export default function CheckoutPage() {
             <div className="lg:col-span-2 space-y-6">
 
               {/* Step 1: Shipping */}
-              <div className={cn('bg-dark-card border rounded-xl p-6 transition-all', step === 1 ? 'border-blue-500/30' : 'border-dark-border')}>
+              <div
+                className="bg-white rounded-xl p-6 transition-all"
+                style={{ border: `1px solid ${step === 1 ? '#E31A2D' : '#D9E1EB'}`, boxShadow: '0 2px 16px rgba(0,28,63,0.06)' }}
+              >
                 <div className="flex items-center justify-between mb-5">
                   <h2 className="font-heading font-semibold text-text-primary flex items-center gap-2">
-                    <Truck className="w-5 h-5 text-blue-400" />
+                    <Truck className="w-5 h-5 text-brand-red" />
                     Shipping Address
                   </h2>
                   {step > 1 && (
-                    <button onClick={() => setStep(1)} className="text-xs text-blue-400 hover:text-blue-300">
+                    <button onClick={() => setStep(1)} className="text-xs text-brand-red hover:text-brand-red-dark font-medium">
                       Edit
                     </button>
                   )}
@@ -341,19 +406,22 @@ export default function CheckoutPage() {
 
               {/* Step 2: Payment */}
               {step === 2 && (
-                <div className="bg-dark-card border border-blue-500/30 rounded-xl p-6">
+                <div
+                  className="bg-white rounded-xl p-6"
+                  style={{ border: '1px solid #E31A2D', boxShadow: '0 2px 16px rgba(0,28,63,0.06)' }}
+                >
                   <h2 className="font-heading font-semibold text-text-primary flex items-center gap-2 mb-5">
-                    <Shield className="w-5 h-5 text-blue-400" />
+                    <Shield className="w-5 h-5 text-brand-red" />
                     Payment
                   </h2>
 
                   {fetchError ? (
-                    <div className="bg-red-500/10 border border-red-500/20 text-red-400 text-sm px-4 py-3 rounded-xl">
+                    <div className="bg-red-50 border border-brand-red/20 text-brand-red text-sm px-4 py-3 rounded-xl">
                       {fetchError}
                     </div>
                   ) : loading || !clientSecret ? (
                     <div className="flex items-center justify-center py-10 gap-3">
-                      <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                      <div className="w-5 h-5 border-2 border-brand-red border-t-transparent rounded-full animate-spin" />
                       <span className="text-text-muted text-sm">Initializing secure payment...</span>
                     </div>
                   ) : (
@@ -370,39 +438,45 @@ export default function CheckoutPage() {
 
             {/* Right: Order Summary */}
             <div>
-              <div className="bg-dark-card border border-dark-border rounded-xl p-5 sticky top-24">
+              <div
+                className="bg-white rounded-xl p-5 sticky top-24"
+                style={{ border: '1px solid #D9E1EB', boxShadow: '0 2px 16px rgba(0,28,63,0.06)' }}
+              >
                 <h3 className="font-heading font-semibold text-text-primary mb-4">Order Summary</h3>
                 <div className="space-y-3 mb-4">
                   {cartItems.map(({ product, quantity }) => (
                     <div key={product.id} className="flex gap-3 items-center">
-                      <div className="w-10 h-10 rounded-lg bg-dark-muted flex items-center justify-center shrink-0">
+                      <div
+                        className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ background: '#F6F8FA', border: '1px solid #D9E1EB' }}
+                      >
                         <Zap className="w-5 h-5 text-text-muted" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-xs font-medium text-text-primary truncate">{product.name}</p>
                         <p className="text-xs text-text-muted">×{quantity}</p>
                       </div>
-                      <p className="text-xs font-semibold text-text-primary shrink-0">
+                      <p className="text-xs font-semibold text-brand-price shrink-0">
                         {formatPrice(product.price * quantity)}
                       </p>
                     </div>
                   ))}
                 </div>
 
-                <div className="border-t border-dark-border pt-4 space-y-2">
+                <div className="pt-4 space-y-2" style={{ borderTop: '1px solid #D9E1EB' }}>
                   <div className="flex justify-between text-sm">
                     <span className="text-text-muted">Subtotal</span>
                     <span className="text-text-primary">{formatPrice(cartTotal)}</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-text-muted">Shipping</span>
-                    <span className={serverShipping === 0 ? 'text-green-400' : 'text-text-primary'}>
+                    <span className={serverShipping === 0 ? 'text-green-600 font-medium' : 'text-text-primary'}>
                       {serverShipping === 0 ? 'FREE' : formatPrice(serverShipping)}
                     </span>
                   </div>
-                  <div className="flex justify-between font-heading font-bold pt-2 border-t border-dark-border">
+                  <div className="flex justify-between font-heading font-bold pt-2" style={{ borderTop: '1px solid #D9E1EB' }}>
                     <span className="text-text-primary">Total</span>
-                    <span className="text-text-primary">{formatPrice(serverTotal || cartTotal)}</span>
+                    <span className="text-brand-price">{formatPrice(serverTotal || cartTotal)}</span>
                   </div>
                 </div>
               </div>

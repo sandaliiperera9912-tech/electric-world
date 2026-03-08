@@ -12,9 +12,9 @@ const CATEGORY_ICONS: Record<string, React.ComponentType<{ className?: string }>
 
 const BADGE_STYLES: Record<string, string> = {
   'Best Seller': 'badge-blue',
-  'New': 'badge-purple',
-  'Top Rated': 'badge-orange',
-  'Deal': 'badge-green',
+  'New':         'badge-red',
+  'Top Rated':   'badge-orange',
+  'Deal':        'badge-green',
 }
 
 interface ProductCardProps {
@@ -46,8 +46,11 @@ export default function ProductCard({ product, onWishlistToggle, isWishlisted = 
       className="product-card group flex flex-col h-full"
       onClick={() => navigate(`/products/${product.id}`)}
     >
-      {/* Image */}
-      <div className="relative h-44 rounded-xl bg-dark-muted mb-4 flex items-center justify-center overflow-hidden">
+      {/* Image area */}
+      <div
+        className="relative h-44 rounded-xl mb-4 flex items-center justify-center overflow-hidden"
+        style={{ background: '#F6F8FA', border: '1px solid #D9E1EB' }}
+      >
         {product.images?.[0] ? (
           <img
             src={product.images[0]}
@@ -56,7 +59,7 @@ export default function ProductCard({ product, onWishlistToggle, isWishlisted = 
             loading="lazy"
           />
         ) : (
-          <CategoryIcon className="w-16 h-16 text-dark-border group-hover:text-text-muted transition-colors duration-300" />
+          <CategoryIcon className="w-16 h-16 text-brand-header/20 group-hover:text-brand-header/40 transition-colors duration-300" />
         )}
 
         {product.badge && (
@@ -66,14 +69,16 @@ export default function ProductCard({ product, onWishlistToggle, isWishlisted = 
         )}
 
         {product.stock <= 5 && product.stock > 0 && (
-          <span className="absolute top-3 right-3 badge bg-red-500/15 text-red-400 border border-red-500/20">
+          <span className="absolute top-3 right-3 badge bg-red-100 text-brand-red border border-brand-red/20">
             Only {product.stock} left
           </span>
         )}
 
         {product.stock === 0 && (
-          <div className="absolute inset-0 bg-dark-bg/70 flex items-center justify-center rounded-xl">
-            <span className="badge bg-dark-muted border border-dark-border text-text-muted">Out of Stock</span>
+          <div className="absolute inset-0 flex items-center justify-center rounded-xl"
+            style={{ background: 'rgba(246,248,250,0.85)' }}
+          >
+            <span className="badge bg-white border text-text-muted" style={{ borderColor: '#D9E1EB' }}>Out of Stock</span>
           </div>
         )}
 
@@ -85,12 +90,13 @@ export default function ProductCard({ product, onWishlistToggle, isWishlisted = 
               'absolute top-3 right-3 w-8 h-8 rounded-full flex items-center justify-center transition-all',
               'opacity-0 group-hover:opacity-100',
               isWishlisted
-                ? 'bg-red-500/20 border border-red-500/30 text-red-400'
-                : 'bg-dark-muted border border-dark-border text-text-muted hover:text-red-400'
+                ? 'bg-brand-red/10 border border-brand-red/30 text-brand-red'
+                : 'bg-white border text-text-muted hover:text-brand-red'
             )}
+            style={!isWishlisted ? { borderColor: '#D9E1EB' } : {}}
             aria-label="Toggle wishlist"
           >
-            <Heart className={cn('w-4 h-4', isWishlisted && 'fill-red-400')} />
+            <Heart className={cn('w-4 h-4', isWishlisted && 'fill-brand-red')} />
           </button>
         )}
       </div>
@@ -98,7 +104,7 @@ export default function ProductCard({ product, onWishlistToggle, isWishlisted = 
       {/* Content */}
       <div className="flex flex-col flex-1 gap-2">
         <p className="text-xs text-text-muted capitalize font-medium tracking-wide">{product.category}</p>
-        <h3 className="font-heading font-semibold text-text-primary text-sm leading-snug group-hover:text-blue-400 transition-colors line-clamp-2">
+        <h3 className="font-heading font-semibold text-text-primary text-sm leading-snug group-hover:text-brand-red transition-colors line-clamp-2">
           {product.name}
         </h3>
         <p className="text-xs text-text-muted leading-relaxed line-clamp-2 flex-1">
@@ -111,7 +117,7 @@ export default function ProductCard({ product, onWishlistToggle, isWishlisted = 
             {[1,2,3,4,5].map(s => (
               <Star
                 key={s}
-                className={cn('w-3.5 h-3.5', s <= Math.round(product.rating) ? 'text-yellow-400 fill-yellow-400' : 'text-dark-border')}
+                className={cn('w-3.5 h-3.5', s <= Math.round(product.rating) ? 'text-yellow-500 fill-yellow-500' : 'text-gray-300 fill-gray-200')}
               />
             ))}
           </div>
@@ -121,20 +127,19 @@ export default function ProductCard({ product, onWishlistToggle, isWishlisted = 
         </div>
 
         {/* Price + CTA */}
-        <div className="flex items-center justify-between mt-auto pt-3 border-t border-dark-border">
-          <div>
-            <span className="font-heading font-bold text-text-primary">{formatPrice(product.price)}</span>
-          </div>
+        <div className="flex items-center justify-between mt-auto pt-3" style={{ borderTop: '1px solid #D9E1EB' }}>
+          <span className="font-heading font-bold text-brand-price">{formatPrice(product.price)}</span>
           <button
             onClick={handleAddToCart}
             disabled={product.stock === 0}
             className={cn(
               'flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl transition-all active:scale-95',
               added
-                ? 'bg-green-500/15 border border-green-500/30 text-green-400'
-                : 'bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 hover:border-blue-500/40 text-blue-400',
+                ? 'bg-green-100 border border-green-300 text-green-700'
+                : 'bg-brand-red text-white hover:bg-brand-red-dark border border-brand-red',
               product.stock === 0 && 'opacity-50 cursor-not-allowed'
             )}
+            style={added ? {} : { boxShadow: '0 2px 8px rgba(227,26,45,0.25)' }}
           >
             <ShoppingCart className="w-3.5 h-3.5" />
             {added ? 'Added!' : 'Add to Cart'}

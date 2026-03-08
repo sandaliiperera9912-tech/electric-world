@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase'
 
 function ValidationItem({ valid, text }: { valid: boolean; text: string }) {
   return (
-    <div className={`flex items-center gap-1.5 text-xs transition-colors ${valid ? 'text-green-400' : 'text-text-muted'}`}>
+    <div className={`flex items-center gap-1.5 text-xs transition-colors ${valid ? 'text-green-600' : 'text-text-muted'}`}>
       <CheckCircle className="w-3.5 h-3.5" />
       {text}
     </div>
@@ -58,20 +58,17 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className="min-h-screen bg-dark-bg flex items-center justify-center p-4">
-      <div className="absolute top-1/4 left-1/3 w-80 h-80 bg-purple-500/5 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-1/4 right-1/3 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
-
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: '#F6F8FA' }}>
       <div className="w-full max-w-md relative">
 
         {/* Logo */}
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-6">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+            <div className="w-10 h-10 bg-brand-red rounded-xl flex items-center justify-center shadow-md">
               <Zap className="w-6 h-6 text-white" strokeWidth={2.5} />
             </div>
             <span className="font-heading font-bold text-xl text-text-primary">
-              Electric <span className="gradient-text">World</span>
+              Electric <span className="text-brand-red">World</span>
             </span>
           </Link>
           <h1 className="font-heading font-bold text-3xl text-text-primary mb-2">Create account</h1>
@@ -79,11 +76,11 @@ export default function RegisterPage() {
         </div>
 
         {/* Form card */}
-        <div className="bg-dark-card border border-dark-border rounded-2xl p-8 shadow-2xl">
+        <div className="bg-white border rounded-2xl p-8 shadow-card" style={{ borderColor: '#D9E1EB' }}>
           <form onSubmit={handleSubmit} className="space-y-5">
 
             {error && (
-              <div className="flex items-center gap-2.5 bg-red-500/10 border border-red-500/20 text-red-400 text-sm px-4 py-3 rounded-xl">
+              <div className="flex items-center gap-2.5 bg-red-50 border border-brand-red/20 text-brand-red text-sm px-4 py-3 rounded-xl">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 {error}
               </div>
@@ -171,7 +168,7 @@ export default function RegisterPage() {
 
           <p className="text-center text-text-muted text-sm mt-6">
             Already have an account?{' '}
-            <Link to="/login" className="text-blue-400 hover:text-blue-300 font-medium transition-colors">
+            <Link to="/login" className="text-brand-red hover:text-brand-red-dark font-medium transition-colors">
               Sign in
             </Link>
           </p>

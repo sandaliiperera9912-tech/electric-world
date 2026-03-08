@@ -1,5 +1,6 @@
 import { searchProducts } from './products'
 import { supabase } from './supabase'
+import { STATIC_PRODUCTS, searchStaticProducts, findStaticProduct } from './staticProducts'
 import type { CartItemLocal, Product } from '@/types'
 
 interface ToolResult {
@@ -27,7 +28,24 @@ export async function executeToolCall(
           minPrice?: number
           maxPrice?: number
         }
-        const products = await searchProducts(query)
+
+        // Try Supabase first, fall back to static products
+        let products: Product[] = []
+        try {
+          products = await searchProducts(query)
+        } catch {
+          // DB not available — use static
+        }
+
+        // If DB returned nothing, fall back to static catalog
+        if (products.length === 0) {
+          products = searchStaticProducts(query)
+          // Still nothing — return full catalog for broad queries
+          if (products.length === 0) {
+            products = [...STATIC_PRODUCTS]
+          }
+        }
+
         const filtered = products
           .filter(p => !category || p.category === category)
           .filter(p => !minPrice || p.price >= minPrice)
@@ -46,22 +64,44 @@ export async function executeToolCall(
       case 'add_to_cart': {
         const { productId, quantity = 1 } = toolArgs as { productId: string; quantity?: number }
 
-        const { data: product, error } = await supabase
-          .from('products')
-          .select('*')
-          .eq('id', productId)
-          .single()
+        let product: Product | null = null
 
-        if (error || !product) {
-          return { success: false, message: 'Product not found.' }
+        // 1. Try Supabase by UUID
+        try {
+          const { data, error } = await supabase
+            .from('products')
+            .select('*')
+            .eq('id', productId)
+            .single()
+          if (!error && data) product = data as Product
+        } catch {
+          // DB not available
         }
 
-        addToCartFn(product as Product, quantity as number)
+        // 2. Fall back to static products
+        if (!product) {
+          product = findStaticProduct(productId) ?? null
+        }
+
+        // 3. Last resort — search by productId as a name keyword
+        if (!product) {
+          const matches = searchStaticProducts(productId)
+          if (matches.length > 0) product = matches[0]
+        }
+
+        if (!product) {
+          return {
+            success: false,
+            message: `Sorry, I couldn't find that product. Try asking me to search for it first!`,
+          }
+        }
+
+        addToCartFn(product, quantity as number)
 
         return {
           success: true,
           data: product,
-          message: `Added **${(product as Product).name}** (×${quantity}) to your cart ✓`,
+          message: `Added **${product.name}** ×${quantity} to your cart ✓`,
         }
       }
 
@@ -125,7 +165,7 @@ export async function executeToolCall(
           success: true,
           action: 'redirect',
           path: '/checkout',
-          message: "Taking you to checkout now 🛒 Your cart items are ready!",
+          message: 'Taking you to checkout now 🛒 Your cart items are ready!',
         }
       }
 

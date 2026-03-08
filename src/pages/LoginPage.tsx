@@ -30,21 +30,17 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-dark-bg flex items-center justify-center p-4">
-      {/* Background glows */}
-      <div className="absolute top-1/4 left-1/3 w-80 h-80 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-1/4 right-1/3 w-64 h-64 bg-purple-500/5 rounded-full blur-3xl pointer-events-none" />
-
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: '#F6F8FA' }}>
       <div className="w-full max-w-md relative">
 
         {/* Logo */}
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2 mb-6">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/20">
+            <div className="w-10 h-10 bg-brand-red rounded-xl flex items-center justify-center shadow-md">
               <Zap className="w-6 h-6 text-white" strokeWidth={2.5} />
             </div>
             <span className="font-heading font-bold text-xl text-text-primary">
-              Electric <span className="gradient-text">World</span>
+              Electric <span className="text-brand-red">World</span>
             </span>
           </Link>
           <h1 className="font-heading font-bold text-3xl text-text-primary mb-2">Welcome back</h1>
@@ -52,12 +48,12 @@ export default function LoginPage() {
         </div>
 
         {/* Form card */}
-        <div className="bg-dark-card border border-dark-border rounded-2xl p-8 shadow-2xl">
+        <div className="bg-white border rounded-2xl p-8 shadow-card" style={{ borderColor: '#D9E1EB' }}>
           <form onSubmit={handleSubmit} className="space-y-5">
 
             {/* Error message */}
             {error && (
-              <div className="flex items-center gap-2.5 bg-red-500/10 border border-red-500/20 text-red-400 text-sm px-4 py-3 rounded-xl">
+              <div className="flex items-center gap-2.5 bg-red-50 border border-brand-red/20 text-brand-red text-sm px-4 py-3 rounded-xl">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 {error}
               </div>
@@ -121,7 +117,7 @@ export default function LoginPage() {
 
           <p className="text-center text-text-muted text-sm mt-6">
             Don't have an account?{' '}
-            <Link to="/register" className="text-blue-400 hover:text-blue-300 font-medium transition-colors">
+            <Link to="/register" className="text-brand-red hover:text-brand-red-dark font-medium transition-colors">
               Sign up
             </Link>
           </p>
