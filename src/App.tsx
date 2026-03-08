@@ -1,9 +1,10 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from '@/store/authContext'
 import { CartProvider } from '@/store/cartContext'
 import { ToastProvider } from '@/components/ui/Toast'
 import ProtectedRoute from '@/components/ProtectedRoute'
+import AdminRoute from '@/components/admin/AdminRoute'
 
 const HomePage = lazy(() => import('@/pages/HomePage'))
 const ProductsPage = lazy(() => import('@/pages/ProductsPage'))
@@ -20,12 +21,18 @@ const RegisterPage = lazy(() => import('@/pages/RegisterPage'))
 const ProfilePage = lazy(() => import('@/pages/ProfilePage'))
 const SupportPage = lazy(() => import('@/pages/SupportPage'))
 
+// Admin pages
+const AdminLoginPage      = lazy(() => import('@/pages/admin/AdminLoginPage'))
+const AdminDashboardPage  = lazy(() => import('@/pages/admin/AdminDashboardPage'))
+const AdminProductsPage   = lazy(() => import('@/pages/admin/AdminProductsPage'))
+const AdminProductFormPage = lazy(() => import('@/pages/admin/AdminProductFormPage'))
+
 function PageLoader() {
   return (
-    <div className="min-h-screen bg-dark-bg flex items-center justify-center">
+    <div className="min-h-screen flex items-center justify-center" style={{ background: '#F6F8FA' }}>
       <div className="flex flex-col items-center gap-4">
-        <div className="text-3xl font-heading font-bold gradient-text">⚡ Electric World</div>
-        <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        <div className="text-3xl font-heading font-bold" style={{ color: '#001C3F' }}>⚡ Electric World</div>
+        <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#E31A2D', borderTopColor: 'transparent' }} />
       </div>
     </div>
   )
@@ -94,6 +101,26 @@ export default function App() {
                     <ProfilePage />
                   </ProtectedRoute>
                 }
+              />
+
+              {/* Admin routes */}
+              <Route path="/admin/login" element={<AdminLoginPage />} />
+              <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+              <Route
+                path="/admin/dashboard"
+                element={<AdminRoute><AdminDashboardPage /></AdminRoute>}
+              />
+              <Route
+                path="/admin/products"
+                element={<AdminRoute><AdminProductsPage /></AdminRoute>}
+              />
+              <Route
+                path="/admin/products/new"
+                element={<AdminRoute><AdminProductFormPage /></AdminRoute>}
+              />
+              <Route
+                path="/admin/products/edit/:id"
+                element={<AdminRoute><AdminProductFormPage /></AdminRoute>}
               />
             </Routes>
           </Suspense>

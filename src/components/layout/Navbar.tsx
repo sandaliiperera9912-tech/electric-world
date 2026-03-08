@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ShoppingCart, Zap, Search, Menu, X, User, Heart } from 'lucide-react'
+import { ShoppingCart, Zap, Search, Menu, X, User, Heart, ShieldCheck } from 'lucide-react'
 import { useCart } from '@/store/cartContext'
 import { useAuth } from '@/store/authContext'
 import CartDrawer from '@/components/CartDrawer'
@@ -86,6 +86,13 @@ export default function Navbar() {
                   {link.label}
                 </Link>
               ))}
+              <Link
+                to="/admin/login"
+                className="flex items-center gap-1.5 text-sm text-white/60 hover:text-white transition-colors font-medium border border-white/15 hover:border-white/30 px-2.5 py-1 rounded-lg"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                Admin
+              </Link>
             </div>
 
             {/* Right actions */}
@@ -167,6 +174,7 @@ export default function Navbar() {
                   { to: '/support', label: 'Support' },
                   { to: user ? '/profile' : '/login', label: user ? 'Profile' : 'Sign In' },
                   { to: '/wishlist', label: 'Wishlist' },
+                  { to: '/admin/login', label: 'Admin Panel' },
                 ].map(link => (
                   <Link
                     key={link.to}
