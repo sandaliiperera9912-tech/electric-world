@@ -126,9 +126,11 @@ export async function executeToolCall(
         }
         const { orderId } = toolArgs as { orderId?: string }
 
+        const selectQuery = 'id, status, total, created_at, order_items(quantity, product_name, price_at_purchase)'
+
         let query = supabase
           .from('orders')
-          .select('id, status, total, created_at, items:order_items(id)')
+          .select(selectQuery)
           .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .limit(3)
@@ -136,7 +138,7 @@ export async function executeToolCall(
         if (orderId) {
           query = supabase
             .from('orders')
-            .select('id, status, total, created_at, items:order_items(id)')
+            .select(selectQuery)
             .eq('id', orderId)
             .eq('user_id', userId)
             .limit(1)
@@ -148,15 +150,74 @@ export async function executeToolCall(
         }
 
         const lines = orders.map((o: Record<string, unknown>) => {
-          const items = Array.isArray(o.items) ? o.items : []
-          const dateStr = new Date(o.created_at as string).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-          return `- Order **#${(o.id as string).slice(0, 8).toUpperCase()}** (${dateStr}) — **${o.status}** — $${Number(o.total).toFixed(2)} (${items.length} item${items.length !== 1 ? 's' : ''})`
+          const items = Array.isArray(o.order_items) ? o.order_items : []
+          const dateStr = new Date(o.created_at as string).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          const itemNames = items.slice(0, 2).map((i: Record<string, unknown>) => i.product_name ?? 'Item').join(', ')
+          const moreItems = items.length > 2 ? ` +${items.length - 2} more` : ''
+          return `- Order **#${(o.id as string).slice(0, 8).toUpperCase()}** · ${dateStr}\n  Status: **${o.status}** · Total: **$${Number(o.total).toFixed(2)}**\n  Items: ${itemNames}${moreItems}`
         })
 
         return {
           success: true,
           data: orders,
-          message: `Here are your recent orders:\n${lines.join('\n')}`,
+          message: `Here are your recent orders:\n\n${lines.join('\n\n')}`,
+        }
+      }
+
+      case 'compare_products': {
+        const { productNames } = toolArgs as { productNames: string[] }
+
+        const foundProducts: Product[] = []
+
+        for (const nameOrId of productNames.slice(0, 4)) {
+          let product: Product | null = null
+
+          // Try Supabase by name (ilike search)
+          try {
+            const { data } = await supabase
+              .from('products')
+              .select('*')
+              .ilike('name', `%${nameOrId}%`)
+              .limit(1)
+              .single()
+            if (data) product = data as Product
+          } catch { /* fallback */ }
+
+          // Fall back to static products
+          if (!product) {
+            const matches = searchStaticProducts(nameOrId)
+            if (matches.length > 0) product = matches[0]
+          }
+
+          if (product) foundProducts.push(product)
+        }
+
+        if (foundProducts.length < 2) {
+          return {
+            success: false,
+            message: `I could only find ${foundProducts.length} of the products you mentioned. Could you be more specific with the product names?`,
+          }
+        }
+
+        // Build comparison table
+        const header = `| Feature | ${foundProducts.map(p => `**${p.name}**`).join(' | ')} |`
+        const separator = `|---------|${foundProducts.map(() => '---------|').join('')}`
+        const priceRow = `| 💰 Price | ${foundProducts.map(p => `$${p.price.toFixed(2)}`).join(' | ')} |`
+        const ratingRow = `| ⭐ Rating | ${foundProducts.map(p => `${p.rating ?? 'N/A'}★ (${p.review_count ?? 0} reviews)`).join(' | ')} |`
+        const categoryRow = `| 📦 Category | ${foundProducts.map(p => p.category).join(' | ')} |`
+        const stockRow = `| 🏪 Stock | ${foundProducts.map(p => p.stock > 0 ? `${p.stock} units` : 'Out of stock').join(' | ')} |`
+
+        const table = [header, separator, priceRow, ratingRow, categoryRow, stockRow].join('\n')
+
+        // Pick best value recommendation
+        const bestValue = foundProducts.reduce((best, p) =>
+          (p.rating ?? 0) / p.price > (best.rating ?? 0) / best.price ? p : best
+        )
+
+        return {
+          success: true,
+          data: { products: foundProducts, isComparison: true },
+          message: `Here's a side-by-side comparison:\n\n${table}\n\n**My Pick:** **${bestValue.name}** — best value for money at $${bestValue.price.toFixed(2)} with a ${bestValue.rating}★ rating.`,
         }
       }
 

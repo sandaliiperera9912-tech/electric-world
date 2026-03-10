@@ -94,4 +94,6 @@ export interface ChatMessage {
   content: string
   timestamp: Date
   productResults?: Product[]
+  comparisonProducts?: Product[]
+  isMemory?: boolean
 }

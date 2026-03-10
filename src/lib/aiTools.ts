@@ -93,4 +93,22 @@ export const AI_TOOLS: OpenAI.Chat.ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'compare_products',
+      description: 'Compare two or more products side by side. Use when user says "compare", "vs", "difference between", "which is better", or wants to choose between specific products.',
+      parameters: {
+        type: 'object',
+        properties: {
+          productNames: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Array of product names or IDs to compare (2–4 products)',
+          },
+        },
+        required: ['productNames'],
+      },
+    },
+  },
 ]
