@@ -1,6 +1,6 @@
 import { searchProducts } from './products'
 import { supabase } from './supabase'
-import { STATIC_PRODUCTS, searchStaticProducts, findStaticProduct } from './staticProducts'
+import { STATIC_PRODUCTS, searchStaticProducts, findStaticProduct, fuzzyFindProduct } from './staticProducts'
 import type { CartItemLocal, Product } from '@/types'
 
 interface ToolResult {
@@ -168,34 +168,48 @@ export async function executeToolCall(
         const { productNames } = toolArgs as { productNames: string[] }
 
         const foundProducts: Product[] = []
+        const notFound: string[] = []
 
-        for (const nameOrId of productNames.slice(0, 4)) {
+        for (const keyword of productNames.slice(0, 4)) {
           let product: Product | null = null
 
-          // Try Supabase by name (ilike search)
+          // 1. Try Supabase with multi-keyword search
           try {
-            const { data } = await supabase
-              .from('products')
-              .select('*')
-              .ilike('name', `%${nameOrId}%`)
-              .limit(1)
-              .single()
-            if (data) product = data as Product
+            // Split into tokens and try each one
+            const tokens = keyword.toLowerCase().split(/\s+/).filter(t => t.length > 1)
+            for (const token of tokens) {
+              const { data } = await supabase
+                .from('products')
+                .select('*')
+                .ilike('name', `%${token}%`)
+                .order('rating', { ascending: false })
+                .limit(1)
+              if (data && data.length > 0) { product = data[0] as Product; break }
+            }
           } catch { /* fallback */ }
 
-          // Fall back to static products
+          // 2. Fall back to fuzzy static product search
           if (!product) {
-            const matches = searchStaticProducts(nameOrId)
-            if (matches.length > 0) product = matches[0]
+            product = fuzzyFindProduct(keyword) ?? null
           }
 
-          if (product) foundProducts.push(product)
+          if (product) {
+            // Avoid duplicates
+            if (!foundProducts.find(p => p.id === product!.id)) {
+              foundProducts.push(product)
+            }
+          } else {
+            notFound.push(keyword)
+          }
         }
 
         if (foundProducts.length < 2) {
+          const hint = notFound.length > 0
+            ? ` I couldn't find: **${notFound.join(', ')}**. Try using the brand name or model number.`
+            : ''
           return {
             success: false,
-            message: `I could only find ${foundProducts.length} of the products you mentioned. Could you be more specific with the product names?`,
+            message: `I need at least 2 products to compare.${hint}`,
           }
         }
 
@@ -203,21 +217,29 @@ export async function executeToolCall(
         const header = `| Feature | ${foundProducts.map(p => `**${p.name}**`).join(' | ')} |`
         const separator = `|---------|${foundProducts.map(() => '---------|').join('')}`
         const priceRow = `| 💰 Price | ${foundProducts.map(p => `$${p.price.toFixed(2)}`).join(' | ')} |`
-        const ratingRow = `| ⭐ Rating | ${foundProducts.map(p => `${p.rating ?? 'N/A'}★ (${p.review_count ?? 0} reviews)`).join(' | ')} |`
+        const ratingRow = `| ⭐ Rating | ${foundProducts.map(p => `${p.rating ?? 'N/A'}★ (${(p.review_count ?? 0).toLocaleString()} reviews)`).join(' | ')} |`
         const categoryRow = `| 📦 Category | ${foundProducts.map(p => p.category).join(' | ')} |`
         const stockRow = `| 🏪 Stock | ${foundProducts.map(p => p.stock > 0 ? `${p.stock} units` : 'Out of stock').join(' | ')} |`
 
         const table = [header, separator, priceRow, ratingRow, categoryRow, stockRow].join('\n')
 
-        // Pick best value recommendation
+        // Best value = highest rating-to-price ratio
         const bestValue = foundProducts.reduce((best, p) =>
           (p.rating ?? 0) / p.price > (best.rating ?? 0) / best.price ? p : best
         )
+        // Highest rated
+        const topRated = foundProducts.reduce((best, p) =>
+          (p.rating ?? 0) > (best.rating ?? 0) ? p : best
+        )
+
+        const recommendation = bestValue.id === topRated.id
+          ? `**My Pick:** **${bestValue.name}** — best value AND highest rated at ${bestValue.rating}★ for $${bestValue.price.toFixed(2)}.`
+          : `**Best Value:** **${bestValue.name}** ($${bestValue.price.toFixed(2)}) · **Top Rated:** **${topRated.name}** (${topRated.rating}★)`
 
         return {
           success: true,
           data: { products: foundProducts, isComparison: true },
-          message: `Here's a side-by-side comparison:\n\n${table}\n\n**My Pick:** **${bestValue.name}** — best value for money at $${bestValue.price.toFixed(2)} with a ${bestValue.rating}★ rating.`,
+          message: `Here's a side-by-side comparison:\n\n${table}\n\n${recommendation}`,
         }
       }
 

@@ -159,15 +159,102 @@ export const STATIC_PRODUCTS: Product[] = [
   },
 ]
 
-/** Search static products by name/description keyword */
+// Common shorthand aliases → keywords that appear in product names
+const ALIASES: Record<string, string> = {
+  'xm5': 'WH-1000XM5',
+  'xm4': 'WH-1000XM4',
+  'xm3': 'WH-1000XM3',
+  'qc': 'QuietComfort',
+  'qc45': 'QuietComfort',
+  'qc ultra': 'QuietComfort Ultra',
+  'airpods': 'AirPods',
+  'airpods pro': 'AirPods Pro',
+  'macbook': 'MacBook',
+  'macbook air': 'MacBook Air',
+  'macbook pro': 'MacBook Pro',
+  'iphone': 'iPhone',
+  'iphone 15': 'iPhone 15',
+  'galaxy': 'Galaxy',
+  's24': 'Galaxy S24',
+  's24 ultra': 'Galaxy S24 Ultra',
+  'pixel': 'Pixel',
+  'xps': 'Dell XPS',
+  'rog': 'ROG',
+  'zephyrus': 'Zephyrus',
+  'dji': 'DJI',
+  'mini 4': 'Mini 4 Pro',
+  'a7': 'Sony A7',
+  'bravia': 'Bravia',
+  'oled': 'OLED',
+  'qled': 'QLED',
+  'dyson': 'Dyson',
+  'roomba': 'Roomba',
+  'bose': 'Bose',
+  'sony': 'Sony',
+  'samsung': 'Samsung',
+  'apple': 'Apple',
+  'google': 'Google',
+  'oneplus': 'OnePlus',
+  'lg': 'LG',
+  'dell': 'Dell',
+  'asus': 'ASUS',
+  'ninja': 'Ninja',
+}
+
+/** Score a product against a query — higher = better match */
+function scoreProduct(product: Product, query: string): number {
+  const normalized = query.toLowerCase().trim()
+
+  // Resolve alias first
+  const resolved = ALIASES[normalized] ?? normalized
+  const haystack = `${product.name} ${product.description} ${product.category}`.toLowerCase()
+
+  // Exact name match = highest score
+  if (product.name.toLowerCase() === resolved.toLowerCase()) return 100
+
+  // Name starts with query
+  if (product.name.toLowerCase().startsWith(resolved.toLowerCase())) return 80
+
+  // Name contains exact resolved alias
+  if (haystack.includes(resolved.toLowerCase())) return 60
+
+  // Multi-word scoring: split query into tokens, score each hit
+  const tokens = normalized.split(/\s+/).filter(t => t.length > 1)
+  let score = 0
+  for (const token of tokens) {
+    const resolvedToken = ALIASES[token] ?? token
+    if (haystack.includes(resolvedToken.toLowerCase())) score += 20
+    else if (haystack.includes(token)) score += 10
+  }
+
+  return score
+}
+
+/** Search static products by keyword — returns results sorted by best match */
 export function searchStaticProducts(query: string): Product[] {
-  const q = query.toLowerCase()
-  return STATIC_PRODUCTS.filter(
-    p =>
-      p.name.toLowerCase().includes(q) ||
-      p.description.toLowerCase().includes(q) ||
-      p.category.toLowerCase().includes(q)
-  )
+  const q = query.toLowerCase().trim()
+  const resolved = (ALIASES[q] ?? q).toLowerCase()
+
+  const scored = STATIC_PRODUCTS
+    .map(p => ({ product: p, score: scoreProduct(p, q) }))
+    .filter(({ score }) => score > 0)
+    .sort((a, b) => b.score - a.score)
+
+  // If nothing matched by score, do a fallback contains check with resolved alias
+  if (scored.length === 0) {
+    return STATIC_PRODUCTS.filter(p => {
+      const hay = `${p.name} ${p.description} ${p.category}`.toLowerCase()
+      return hay.includes(resolved) || hay.includes(q)
+    })
+  }
+
+  return scored.map(({ product }) => product)
+}
+
+/** Find the single best-matching static product for a keyword */
+export function fuzzyFindProduct(query: string): Product | undefined {
+  const results = searchStaticProducts(query)
+  return results[0]
 }
 
 /** Find a static product by its ID */

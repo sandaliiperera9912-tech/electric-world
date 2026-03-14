@@ -5,6 +5,7 @@ import ChatWidget from '@/components/ai/ChatWidget'
 import ProductCard from '@/components/ProductCard'
 import ProductCardSkeleton from '@/components/ui/ProductCardSkeleton'
 import { getProducts } from '@/lib/products'
+import { useWishlist } from '@/lib/useWishlist'
 import { cn } from '@/lib/utils'
 import type { Product } from '@/types'
 import { useSearchParams } from 'react-router-dom'
@@ -31,6 +32,7 @@ export default function ProductsPage() {
   const [page, setPage] = useState(1)
   const [hasMore, setHasMore] = useState(true)
   const [filterOpen, setFilterOpen] = useState(false)
+  const { isWishlisted, toggleWishlist } = useWishlist()
 
   const fetchProducts = useCallback(async (reset = false) => {
     setLoading(true)
@@ -253,7 +255,12 @@ export default function ProductsPage() {
                 <>
                   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
                     {products.map(product => (
-                      <ProductCard key={product.id} product={product} />
+                      <ProductCard
+                        key={product.id}
+                        product={product}
+                        isWishlisted={isWishlisted(product.id)}
+                        onWishlistToggle={toggleWishlist}
+                      />
                     ))}
                     {loading && Array.from({ length: 3 }).map((_, i) => (
                       <ProductCardSkeleton key={`sk-${i}`} />

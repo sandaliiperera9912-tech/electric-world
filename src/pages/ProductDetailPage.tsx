@@ -10,6 +10,7 @@ import ChatWidget from '@/components/ai/ChatWidget'
 import ProductCardSkeleton from '@/components/ui/ProductCardSkeleton'
 import { getProductById } from '@/lib/products'
 import { useCart } from '@/store/cartContext'
+import { useWishlist } from '@/lib/useWishlist'
 import { formatPrice, cn } from '@/lib/utils'
 import type { Product } from '@/types'
 
@@ -26,7 +27,7 @@ export default function ProductDetailPage() {
   const [loading, setLoading] = useState(true)
   const [quantity, setQuantity] = useState(1)
   const [added, setAdded] = useState(false)
-  const [wishlisted, setWishlisted] = useState(false)
+  const { isWishlisted, toggleWishlist } = useWishlist()
 
   useEffect(() => {
     if (!id) return
@@ -203,15 +204,16 @@ export default function ProductDetailPage() {
                     {added ? 'Added to Cart!' : 'Add to Cart'}
                   </button>
                   <button
-                    onClick={() => setWishlisted(prev => !prev)}
+                    onClick={() => product && toggleWishlist(product.id)}
                     className={cn(
-                      'w-12 h-12 rounded-xl border flex items-center justify-center transition-all',
-                      wishlisted
+                      'w-12 h-12 rounded-xl border flex items-center justify-center transition-all active:scale-95',
+                      product && isWishlisted(product.id)
                         ? 'bg-red-500/15 border-red-500/30 text-red-400'
                         : 'border-dark-border text-text-muted hover:text-red-400 hover:border-red-500/30'
                     )}
+                    title={product && isWishlisted(product.id) ? 'Remove from wishlist' : 'Add to wishlist'}
                   >
-                    <Heart className={cn('w-5 h-5', wishlisted && 'fill-red-400')} />
+                    <Heart className={cn('w-5 h-5', product && isWishlisted(product.id) && 'fill-red-400')} />
                   </button>
                 </div>
               </div>

@@ -349,25 +349,25 @@ export default function ChatWidget() {
       {/* Floating toggle button */}
       <button
         onClick={() => setIsOpen(prev => !prev)}
-        className="fixed bottom-6 right-6 z-40 w-14 h-14 rounded-full flex items-center justify-center hover:scale-105 transition-all duration-200 active:scale-95"
+        className="fixed bottom-6 left-6 z-40 w-16 h-16 rounded-full flex items-center justify-center hover:scale-105 transition-all duration-200 active:scale-95"
         style={{ background: '#E31A2D', boxShadow: '0 4px 20px rgba(227,26,45,0.45)' }}
         aria-label="Toggle Volt AI chat"
       >
         {isOpen ? (
-          <ChevronDown className="w-6 h-6 text-white" />
+          <ChevronDown className="w-7 h-7 text-white" />
         ) : (
-          <Zap className="w-6 h-6 text-white" strokeWidth={2.5} />
+          <Zap className="w-7 h-7 text-white" strokeWidth={2.5} />
         )}
         {hasUnread && !isOpen && (
-          <span className="absolute -top-1 -right-1 w-4 h-4 bg-brand-navy rounded-full border-2 border-white animate-pulse" />
+          <span className="absolute -top-1 -right-1 w-5 h-5 bg-brand-navy rounded-full border-2 border-white animate-pulse" />
         )}
       </button>
 
       {/* Chat window */}
       {isOpen && (
         <div
-          className="fixed bottom-24 right-6 z-40 w-[358px] h-[540px] flex flex-col rounded-2xl overflow-hidden shadow-2xl animate-slide-up"
-          style={{ background: '#0A1929', border: '1px solid rgba(255,255,255,0.08)' }}
+          className="fixed bottom-28 left-6 z-40 w-[390px] flex flex-col rounded-2xl overflow-hidden shadow-2xl animate-slide-up"
+          style={{ height: 'min(560px, calc(100vh - 200px))', background: '#0A1929', border: '1px solid rgba(255,255,255,0.08)' }}
         >
           {/* Header */}
           <div
@@ -411,7 +411,11 @@ export default function ChatWidget() {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-hide">
+          <div
+            className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 scrollbar-hide"
+            onWheel={e => e.stopPropagation()}
+            onTouchMove={e => e.stopPropagation()}
+          >
             {messages.map(msg => (
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 {msg.role === 'assistant' && (
