@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ShoppingBag, Search, Eye, RefreshCw, TrendingUp, Clock, CheckCircle2, Truck } from 'lucide-react'
 import AdminLayout from '@/components/admin/AdminLayout'
 import { supabase } from '@/lib/supabase'
+import { useAdminLog } from '@/lib/useAdminLog'
 import { formatPrice } from '@/lib/utils'
 
 interface OrderRow {
@@ -32,6 +33,7 @@ export default function AdminOrdersPage() {
   const [updatingId, setUpdatingId] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [orderItems, setOrderItems] = useState<Record<string, { name: string; image: string | null; qty: number; price: number }[]>>({})
+  const { logAction } = useAdminLog()
 
   const fetchOrders = () => {
     setLoading(true)
@@ -79,7 +81,16 @@ export default function AdminOrdersPage() {
 
   const updateStatus = async (orderId: string, newStatus: string) => {
     setUpdatingId(orderId)
-    await supabase.from('orders').update({ status: newStatus }).eq('id', orderId)
+    const adminRaw = localStorage.getItem('ew_admin_session')
+    const adminId: string | null = adminRaw ? JSON.parse(adminRaw)?.id ?? null : null
+    const oldOrder = orders.find(o => o.id === orderId)
+    await supabase.from('orders').update({ status: newStatus, updated_by: adminId }).eq('id', orderId)
+    logAction({
+      action: 'update_order_status',
+      targetId: orderId,
+      targetName: `Order #${orderId.slice(0, 8).toUpperCase()}`,
+      details: { oldStatus: oldOrder?.status, newStatus },
+    })
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: newStatus } : o))
     setUpdatingId(null)
   }

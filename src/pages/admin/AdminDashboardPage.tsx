@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Package, ShoppingBag, Star, TrendingUp, Plus, ArrowRight } from 'lucide-react'
+import { Package, ShoppingBag, Star, TrendingUp, Plus, ArrowRight, Activity, Pencil, Trash2, Truck } from 'lucide-react'
 import AdminLayout from '@/components/admin/AdminLayout'
 import { supabase } from '@/lib/supabase'
 import { formatPrice } from '@/lib/utils'
@@ -14,9 +14,37 @@ interface Stats {
   recentProducts: { id: string; name: string; price: number; category: string; stock: number; rating: number }[]
 }
 
+interface LogEntry {
+  id: string
+  admin_name: string
+  action: string
+  target_name: string | null
+  details: Record<string, string> | null
+  created_at: string
+}
+
+const ACTION_META: Record<string, { label: string; color: string; Icon: React.ComponentType<{ className?: string }> }> = {
+  create_product:       { label: 'Added product',   color: '#16a34a', Icon: Package },
+  update_product:       { label: 'Updated product', color: '#1d4ed8', Icon: Pencil },
+  delete_product:       { label: 'Deleted product', color: '#b91c1c', Icon: Trash2 },
+  update_order_status:  { label: 'Order status →',  color: '#7c3aed', Icon: Truck },
+}
+
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [logs, setLogs] = useState<LogEntry[]>([])
+  const [logsLoading, setLogsLoading] = useState(true)
+
+  useEffect(() => {
+    supabase
+      .from('admin_logs')
+      .select('id, admin_name, action, target_name, details, created_at')
+      .order('created_at', { ascending: false })
+      .limit(20)
+      .then(({ data }) => { if (data) setLogs(data as LogEntry[]) })
+      .finally(() => setLogsLoading(false))
+  }, [])
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -191,6 +219,61 @@ export default function AdminDashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* Activity Log */}
+        <div className="bg-white rounded-xl" style={{ border: '1px solid #D9E1EB', boxShadow: '0 2px 12px rgba(0,28,63,0.06)' }}>
+          <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid #D9E1EB' }}>
+            <h2 className="font-heading font-semibold text-text-primary flex items-center gap-2">
+              <Activity className="w-4 h-4 text-brand-red" />
+              Recent Activity
+            </h2>
+          </div>
+          <div className="divide-y" style={{ borderColor: '#D9E1EB' }}>
+            {logsLoading ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex items-center gap-3 px-5 py-3 animate-pulse">
+                  <div className="w-8 h-8 rounded-lg shrink-0" style={{ background: '#EEF2F7' }} />
+                  <div className="flex-1 space-y-1.5">
+                    <div className="h-3.5 w-48 rounded" style={{ background: '#EEF2F7' }} />
+                    <div className="h-3 w-28 rounded" style={{ background: '#EEF2F7' }} />
+                  </div>
+                  <div className="h-3 w-20 rounded" style={{ background: '#EEF2F7' }} />
+                </div>
+              ))
+            ) : logs.length === 0 ? (
+              <p className="text-sm text-text-muted text-center py-8">
+                No activity yet. Actions you take in the admin panel will appear here.
+              </p>
+            ) : (
+              logs.map(log => {
+                const meta = ACTION_META[log.action] ?? { label: log.action, color: '#6b7280', Icon: Activity }
+                const { Icon } = meta
+                const timeAgo = new Date(log.created_at).toLocaleString('en-US', {
+                  month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+                })
+                const statusSuffix = log.action === 'update_order_status' && log.details
+                  ? ` ${log.details.oldStatus} → ${log.details.newStatus}`
+                  : ''
+                return (
+                  <div key={log.id} className="flex items-center gap-3 px-5 py-3 hover:bg-dark-muted/30 transition-colors">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${meta.color}15` }}>
+                      <Icon className="w-4 h-4" style={{ color: meta.color }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-text-primary truncate">
+                        {meta.label}{statusSuffix}
+                        {log.target_name && <span className="font-normal text-text-muted"> — {log.target_name}</span>}
+                      </p>
+                      <p className="text-xs text-text-muted">by {log.admin_name}</p>
+                    </div>
+                    <span className="text-xs text-text-muted shrink-0">{timeAgo}</span>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </div>
+
       </div>
     </AdminLayout>
   )

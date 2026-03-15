@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
-  Save, ArrowLeft, Upload, X, ImagePlus, AlertCircle, CheckCircle2, Package,
+  Save, ArrowLeft, Upload, X, ImagePlus, AlertCircle, CheckCircle2, Package, Trash2,
 } from 'lucide-react'
 import AdminLayout from '@/components/admin/AdminLayout'
 import { supabase } from '@/lib/supabase'
+import { useAdminLog } from '@/lib/useAdminLog'
 import { cn } from '@/lib/utils'
 
 const CATEGORIES = ['phones', 'laptops', 'audio', 'tvs', 'monitors', 'cameras', 'appliances']
@@ -31,11 +32,14 @@ export default function AdminProductFormPage() {
   const { id } = useParams<{ id: string }>()
   const isEdit = !!id
   const navigate = useNavigate()
+  const { logAction } = useAdminLog()
 
   const [form, setForm] = useState<ProductForm>(EMPTY_FORM)
   const [loading, setLoading] = useState(isEdit)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -121,6 +125,9 @@ export default function AdminProductFormPage() {
 
     setSaving(true)
     try {
+      const adminRaw = localStorage.getItem('ew_admin_session')
+      const adminId: string | null = adminRaw ? JSON.parse(adminRaw)?.id ?? null : null
+
       const payload = {
         name: form.name.trim(),
         description: form.description.trim(),
@@ -131,22 +138,47 @@ export default function AdminProductFormPage() {
         rating: parseFloat(form.rating) || 4.5,
         review_count: parseInt(form.review_count) || 0,
         images: form.images,
+        updated_by: adminId,
+        updated_at: new Date().toISOString(),
       }
 
       if (isEdit) {
         const { error: err } = await supabase.from('products').update(payload).eq('id', id)
         if (err) throw err
         setSuccess('Product updated successfully!')
+        logAction({ action: 'update_product', targetId: id, targetName: form.name.trim(), details: { category: form.category, price: parseFloat(form.price) } })
       } else {
-        const { error: err } = await supabase.from('products').insert(payload)
+        const { data: newProd, error: err } = await supabase.from('products').insert({ ...payload, created_by: adminId }).select('id').single()
         if (err) throw err
         setSuccess('Product created successfully!')
+        logAction({ action: 'create_product', targetId: newProd?.id, targetName: form.name.trim(), details: { category: form.category, price: parseFloat(form.price) } })
         setTimeout(() => navigate('/admin/products'), 1200)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed. Check your admin permissions.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!id) return
+    setDeleting(true)
+    setError('')
+    try {
+      // Clean up references — ignore errors silently
+      await supabase.from('order_items').update({ product_id: null }).eq('product_id', id).then(() => {})
+      await supabase.from('cart_items').delete().eq('product_id', id).then(() => {})
+      await supabase.from('wishlists').delete().eq('product_id', id).then(() => {})
+
+      const { error: err } = await supabase.from('products').delete().eq('id', id)
+      if (err) throw err
+      logAction({ action: 'delete_product', targetId: id, targetName: form.name.trim() })
+      navigate('/admin/products')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed.')
+      setDeleting(false)
+      setConfirmDelete(false)
     }
   }
 
@@ -399,7 +431,7 @@ export default function AdminProductFormPage() {
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-3 pb-8">
+        <div className="flex items-center gap-3 pb-8 flex-wrap">
           <button
             type="submit"
             disabled={saving}
@@ -426,8 +458,51 @@ export default function AdminProductFormPage() {
           >
             Cancel
           </button>
+          {isEdit && (
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              className="ml-auto flex items-center gap-2 font-medium text-sm px-5 py-3 rounded-xl transition-all text-brand-red hover:bg-red-50 active:scale-95"
+              style={{ border: '1px solid rgba(227,26,45,0.25)' }}
+            >
+              <Trash2 className="w-4 h-4" />
+              Delete Product
+            </button>
+          )}
         </div>
       </form>
+
+      {/* Delete confirmation modal */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,28,63,0.5)', backdropFilter: 'blur(4px)' }}
+        >
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm" style={{ border: '1px solid #D9E1EB', boxShadow: '0 16px 48px rgba(0,28,63,0.15)' }}>
+            <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4" style={{ background: '#FEE2E2' }}>
+              <Trash2 className="w-6 h-6 text-brand-red" />
+            </div>
+            <h3 className="font-heading font-bold text-text-primary text-center mb-1">Delete this product?</h3>
+            <p className="text-text-muted text-sm text-center mb-5">This cannot be undone. The product will be removed from the store.</p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="flex-1 py-2.5 rounded-xl text-sm font-medium border text-text-secondary hover:bg-dark-muted transition-all"
+                style={{ borderColor: '#D9E1EB' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all active:scale-95 disabled:opacity-60"
+                style={{ background: '#E31A2D' }}
+              >
+                {deleting ? 'Deleting...' : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AdminLayout>
   )
 }

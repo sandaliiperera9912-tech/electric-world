@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Plus, Pencil, Trash2, Search, Package, AlertCircle } from 'lucide-react'
 import AdminLayout from '@/components/admin/AdminLayout'
 import { supabase } from '@/lib/supabase'
+import { useAdminLog } from '@/lib/useAdminLog'
 import { formatPrice, cn } from '@/lib/utils'
 import type { Product } from '@/types'
 
@@ -17,6 +18,7 @@ export default function AdminProductsPage() {
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
   const navigate = useNavigate()
+  const { logAction } = useAdminLog()
 
   const fetchProducts = useCallback(async () => {
     setLoading(true)
@@ -38,13 +40,22 @@ export default function AdminProductsPage() {
 
   const handleDelete = async (id: string) => {
     setDeleting(true)
+    setError('')
     try {
+      // Clean up references — ignore errors (RLS may block these but that's ok)
+      await supabase.from('order_items').update({ product_id: null }).eq('product_id', id).then(() => {})
+      await supabase.from('cart_items').delete().eq('product_id', id).then(() => {})
+      await supabase.from('wishlists').delete().eq('product_id', id).then(() => {})
+
+      const deletedProduct = products.find(p => p.id === id)
       const { error: err } = await supabase.from('products').delete().eq('id', id)
       if (err) throw err
+
+      logAction({ action: 'delete_product', targetId: id, targetName: deletedProduct?.name })
       setProducts(prev => prev.filter(p => p.id !== id))
       setDeleteId(null)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Delete failed')
+      setError(err instanceof Error ? err.message : 'Delete failed. Please try again.')
     } finally {
       setDeleting(false)
     }
